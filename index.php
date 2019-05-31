@@ -2,6 +2,8 @@
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+date_default_timezone_set('America/Denver');
+
 use Bigcommerce\Api\Client as Bigcommerce;
 use Firebase\JWT\JWT;
 use Guzzle\Http\Client;
@@ -18,6 +20,12 @@ $dotenv->load();
 $app = new Application();
 $app['debug'] = true;
 
+$app->get('/', function (Request $request) use ($app) {
+	error_log('hello, log');
+	return '<a href="https://login.bigcommerce.com/app/17626/install">Install</a>';
+	// https://heartmathdev.mybigcommerce.com/manage/app/17626
+});
+
 $app->get('/load', function (Request $request) use ($app) {
 
 	$data = verifySignedRequest($request->get('signed_payload'));
@@ -29,16 +37,22 @@ $app->get('/load', function (Request $request) use ($app) {
 	$user = json_decode($redis->get($key), true);
 	if (empty($user)) {
 		$user = $data['user'];
+		error_log("redis add $key");
 		$redis->set($key, json_encode($user, true));
 	}
-	return 'Welcome ' . json_encode($user, true);
+	return 'Welcome to jeremy\'s application <pre>' . json_encode($user, true) . '</pre>' 
+	. '<br/>' .
+	'<a href="./hello">link</a>';
 });
 
 $app->get('/auth/callback', function (Request $request) use ($app) {
 	$redis = new Credis_Client('localhost');
 
+	$clientId = clientId();
+	$clientSecret = clientSecret();
+	$redirectUri = callbackUrl();
 	$payload = array(
-		'client_id' => clientId(),
+		'client_id' => $clientId,
 		'client_secret' => clientSecret(),
 		'redirect_uri' => callbackUrl(),
 		'grant_type' => 'authorization_code',
@@ -59,14 +73,28 @@ $app->get('/auth/callback', function (Request $request) use ($app) {
 		$key = getUserKey($storeHash, $data['user']['email']);
 
 		// Store the user data and auth data in our key-value store so we can fetch it later and make requests.
+		error_log("redis add $key");
 		$redis->set($key, json_encode($data['user'], true));
-		$redis->set("stores/{$storeHash}/auth", json_encode($data));
+		$key2 = "stores/{$storeHash}/auth";
+		error_log("redis add $key2");
+		$redis->set(2, json_encode($data));
 
-		return 'Hello ' . json_encode($data);
+		return 'Hello <pre>' . json_encode($data) . "</pre>";
 	} else {
-		return 'Something went wrong... [' . $resp->getStatusCode() . '] ' . $resp->getBody();
+		$message = 'Something went wrong... [' . $resp->getStatusCode() . '] ' . $resp->getBody();
+		error_log($message);
+		return $message;
 	}
+};
 
+ $authFunction);
+
+$app->get('/uninstall', function(Request $request) use ($app) {
+	$data = verifySignedRequest($request->get('signed_payload'));
+	if (empty($data)) {
+		return 'Invalid signed_payload.';
+	}
+	return "";
 });
 
 // Endpoint for removing users in a multi-user setup
@@ -79,6 +107,7 @@ $app->get('/remove-user', function(Request $request) use ($app) {
 	$key = getUserKey($data['store_hash'], $data['user']['email']);
 	$redis = new Credis_Client('localhost');
 	$redis->del($key);
+	error_log("redis delete $key");
 	return '[Remove User] '.$data['user']['email'];
 });
 
